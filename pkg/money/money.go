@@ -37,3 +37,8 @@ func (m Money) Add(other Money) (Money, error) {
 	}
 	return Money{amount: m.amount + other.amount, currency: m.currency}, nil
 }
+
+// Negate returns the negative of the Money amount
+func (m Money) Negate() Money {
+	return Money{amount: -m.amount, currency: m.currency}
+}

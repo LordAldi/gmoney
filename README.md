@@ -11,7 +11,7 @@
 * **📅 O(1) Business Calendar:** Calculate billable days between dates excluding weekends and holidays in constant time (no loops), verified against brute-force logic.
 * **📉 Tiered Pricing:** Calculate costs for volume pricing (e.g., "First 10k units @ $0.05, Next 50k @ $0.04") with micro-penny precision.
 * **🏛️ Tax Engine:** Handle Inclusive (VAT) and Exclusive (Sales Tax) calculations without rounding drift.
-* **egotiated Refunds:**wo-level refund engine that handles quantity returns limits and prorates negotiated settlements (e.g., "Keep item for 30% discount") while preserving tax/base ratios.
+* **💸 Negotiated Refunds:** Two-level refund engine that handles quantity returns limits and prorates negotiated settlements (e.g., "Keep item for 30% discount") while preserving tax/base ratios.
 * **🧪 Property-Based Tested:** Logic verified with thousands of random inputs via `gopter` to prove invariants hold (e.g., Conservation of Money).
 
 ## 🚀 Installation
@@ -176,6 +176,26 @@ func ExampleGenerateInvoice() {
 
 ```
 
+### 6. 🛡️ The Double-Entry Ledger
+
+A Calculation Engine answers "How much?", but a Financial System answers "Where is it?".
+The Ledger package enforces the **Double-Entry Rule** (). It is impossible to create a transaction that destroys or creates money cleanly.
+
+```go
+import "github.com/LordAldi/gmoney/pkg/ledger"
+
+// Attempting to book an unbalanced invoice
+entries := []ledger.Entry{
+    {AccountID: "Receivable", Amount: money.New(1500, "USD")}, // +$15.00
+    {AccountID: "Revenue",    Amount: money.New(-1000, "USD")}, // -$10.00
+    // Missing -$5.00 Tax!
+}
+
+txn, err := ledger.NewTransaction("TXN:1", "Inv#1", entries)
+// err: "transaction unbalanced: diff 500 cents"
+// The system refuses to record this.
+
+```
 ## ⚡ Benchmarks
 
 Core algorithms are optimized for high-frequency trading or billing systems.
