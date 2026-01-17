@@ -1,8 +1,8 @@
 # gmoney: Precision Financial Primitives for Go
 
-**gmoney** is a zero-dependency Go library designed for financial systems where "close enough" is not acceptable. It provides primitives for monetary arithmetic, tax handling, proration, and high-precision allocation without floating-point errors.
+**gmoney** is a zero-dependency Go library designed for financial systems where "close enough" is not acceptable. It provides primitives for monetary arithmetic, tax handling, proration, tiered pricing, complex refund negotiation, and double-entry accounting without floating-point errors.
 
-> **The Problem:** `100 / 3` in standard math is `33.333...`. In finance, you cannot destroy the remaining `0.001`. You must distribute it. This library handles the "Penny Variance" problem correctly using the Hamilton/Largest Remainder Method.
+> **The Problem:** `100 / 3` in standard math is `33.333...`. In finance, you cannot destroy the remaining `0.001`. You must distribute it. This library handles the "Penny Variance" problem correctly using the Hamilton/Largest Remainder Method, ensuring your general ledger always balances.
 
 ## 📦 Features
 
@@ -10,9 +10,9 @@
 * **⚖️ Penny-Perfect Allocation:** Split funds by weights (e.g., 33% / 33% / 34%) without losing a single cent. Supports hierarchical (Tree) distribution.
 * **📅 O(1) Business Calendar:** Calculate billable days between dates excluding weekends and holidays in constant time (no loops), verified against brute-force logic.
 * **📉 Tiered Pricing:** Calculate costs for volume pricing (e.g., "First 10k units @ $0.05, Next 50k @ $0.04") with micro-penny precision.
-* **🏛️ Tax Engine:** Handle Inclusive (VAT) and Exclusive (Sales Tax) calculations without rounding drift.
-* **💸 Negotiated Refunds:** Two-level refund engine that handles quantity returns limits and prorates negotiated settlements (e.g., "Keep item for 30% discount") while preserving tax/base ratios.
-* **🧪 Property-Based Tested:** Logic verified with thousands of random inputs via `gopter` to prove invariants hold (e.g., Conservation of Money).
+* **💸 Negotiated Refunds:** Two-level refund engine that handles quantity returns limits and prorates negotiated settlements while preserving tax/base ratios.
+* **📖 Double-Entry Ledger:** Transaction engine that enforces , preventing money creation/destruction.
+* **💱 Multi-Currency FX:** Settlement engine that calculates Realized Gain/Loss when exchange rates fluctuate between Invoice and Payment dates.
 
 ## 🚀 Installation
 
@@ -62,7 +62,7 @@ import (
 policy := calendar.NewStandardPolicy()
 policy.AddHoliday(time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
 
-// Subscription: $100.00/month
+// Subscription: $100.00/month. Joined Feb 14-29.
 sub := billing.Subscription{
     TotalAmount: money.New(10000, "USD"),
     Start:       time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC),
@@ -74,37 +74,14 @@ charge, _ := billing.CalculateProratedCharges(sub, startOfFeb, endOfFeb, policy)
 
 ```
 
-### 3. Inclusive Tax (VAT)
-
-Extract the base price from a gross total of £10.00 with 20% VAT.
-
-```go
-import (
-	"github.com/LordAldi/gmoney/pkg/tax"
-	"github.com/LordAldi/gmoney/pkg/rate"
-)
-
-gross := money.New(1000, "GBP") // £10.00
-vatRate, _ := rate.New("0.20")
-
-// Math: 1000 / 1.20 = 833.333...
-res, _ := tax.CalculateInclusive(gross, vatRate)
-
-fmt.Println(res.Base) // 833 (£8.33)
-fmt.Println(res.Tax)  // 167 (£1.67)
-// 833 + 167 = 1000. Correct.
-
-```
-
-
-### 4. Complex Refund Negotiation
+### 3. Complex Refund Negotiation
 
 Handle the edge case: `I bought 3 items for $3,750. I am returning 1, but we negotiated a custom refund of $666 for the remaining damaged ones.*`
 
 The engine calculates the **Max Refundable Cap** based on quantity, then distributes the negotiated amount across Base Price and Tax to ensure audit compliance.
 
 ```go
-import "github.com/your-username/gmoney/pkg/refund"
+import "github.com/LordAldi/gmoney/pkg/refund"
 
 // Original Line Item: 3 Units, Total $3,750 ($3000 Base + $750 Tax)
 line := refund.LineItem{
@@ -126,60 +103,9 @@ res, err := refund.CalculateItemizedRefund(line, 3, money.New(66600, "USD"))
 
 ```
 
-### 5 🚀 Real-World Scenario: The "Cloud Invoice"
+### 4. Double-Entry Ledger
 
-Combine all packages to generate a complex SaaS invoice:
-
-* **Scenario:** Customer joined Feb 14th (Leap Year).
-* **Usage:** 150k API requests (Tiered pricing).
-* **Logic:** Prorate subscription by *business days* (excluding Feb 19th Holiday), calculate tiered usage costs, then apply 20% VAT.
-
-```go
-func ExampleGenerateInvoice() {
-	// 1. Setup Policies
-	policy := calendar.NewStandardPolicy()
-	policy.AddHoliday(time.Date(2024, 2, 19, 0, 0, 0, 0, time.UTC)) // Bank Holiday
-
-	// 2. Define Pricing Tiers
-	// First 100k @ $0.005, Rest @ $0.004
-	rate1, _ := rate.New("0.005")
-	rate2, _ := rate.New("0.004")
-	tiers := []pricing.Tier{
-		{UpTo: 100_000, Price: rate1},
-		{UpTo: 0,       Price: rate2},
-	}
-
-	// 3. Calculate Subscription (Prorated)
-	// $1,000/month. Joined Feb 14-29 (11 active business days / 20 total)
-	sub := billing.Subscription{
-		TotalAmount: money.New(100000, "USD"),
-		Start:       time.Date(2024, 2, 14, 0, 0, 0, 0, time.UTC),
-		End:         time.Date(2024, 2, 29, 0, 0, 0, 0, time.UTC),
-	}
-	subCharge, _ := billing.CalculateProratedCharges(sub, startFeb, endFeb, policy)
-	// Result: $550.00
-
-	// 4. Calculate Usage
-	// 100k * 0.005 ($500) + 50k * 0.004 ($200)
-	usageCharge, _ := pricing.CalculateGraduatedCost(150_000, tiers)
-	// Result: $700.00
-
-	// 5. Total & Tax
-	subtotal, _ := subCharge.Add(usageCharge) // $1,250.00
-	vatRate, _ := rate.New("0.20")
-	finalBill, _ := tax.CalculateExclusive(subtotal, vatRate)
-
-	fmt.Printf("Subtotal: %s\n", finalBill.Base)  // 125000 ($1,250.00)
-	fmt.Printf("Tax:      %s\n", finalBill.Tax)   // 25000  ($250.00)
-	fmt.Printf("Total:    %s\n", finalBill.Total) // 150000 ($1,500.00)
-}
-
-```
-
-### 6. 🛡️ The Double-Entry Ledger
-
-A Calculation Engine answers "How much?", but a Financial System answers "Where is it?".
-The Ledger package enforces the **Double-Entry Rule** (). It is impossible to create a transaction that destroys or creates money cleanly.
+The Ledger package enforces the **Double-Entry Rule**. It is impossible to create a transaction that destroys or creates money cleanly.
 
 ```go
 import "github.com/LordAldi/gmoney/pkg/ledger"
@@ -196,6 +122,63 @@ txn, err := ledger.NewTransaction("TXN:1", "Inv#1", entries)
 // The system refuses to record this.
 
 ```
+
+### 5. Multi-Currency Settlement (FX)
+
+Calculate **Realized Gain/Loss** when exchange rates fluctuate between the Invoice Date and the Payment Date.
+
+```go
+import "github.com/LordAldi/gmoney/pkg/exchange"
+
+// Day 1: Invoiced €100. Booked as $110 USD (Rate 1.10).
+bookedAR := money.New(11000, "USD") 
+
+// Day 30: Customer pays €100. Rate is now 1.05.
+payment := money.New(10000, "EUR")
+currentRate, _ := exchange.NewRate("EUR", "USD", "1.05")
+
+res, _ := exchange.SettlePayment(payment, currentRate, bookedAR)
+// res.ConvertedAmount: $105.00
+// res.GainLoss:        $5.00
+// res.IsGain:          false (Loss)
+
+```
+
+## 🚀 Full Lifecycle Example: Sale, Refund & Ledger
+
+This example demonstrates the complete financial loop: Calculating Tax, Booking Revenue, Calculating a Refund, and Reversing the entries.
+
+```go
+func ExampleFullLifecycle() {
+    // 1. THE SALE: $2,000 Base + 10% Tax
+    basePrice := money.New(200000, "USD")
+    taxRate, _ := rate.New("0.10")
+    saleResult, _ := tax.CalculateExclusive(basePrice, taxRate) // Total $2,200
+
+    // Book Sale (Dr AR, Cr Sales, Cr Tax)
+    ledger.NewTransaction("TXN:101", "Sale", []ledger.Entry{
+        {AccountID: "Assets:AR", Amount: saleResult.Total},            // +2200
+        {AccountID: "Rev:Sales", Amount: saleResult.Base.Negate()},    // -2000
+        {AccountID: "Liab:Tax",  Amount: saleResult.Tax.Negate()},     // -200
+    })
+
+    // 2. THE REFUND: Negotiated $660 return
+    // Use Refund Engine to split $660 into Base ($600) and Tax ($60)
+    orig := []refund.Component{{Name: "Base", Amount: saleResult.Base}, {Name: "Tax", Amount: saleResult.Tax}}
+    refundRes, _ := refund.CalculateNegotiatedRefund(orig, money.New(66000, "USD"))
+
+    // Book Refund (Cr AR, Dr Sales, Dr Tax)
+    ledger.NewTransaction("TXN:102", "Refund", []ledger.Entry{
+        {AccountID: "Assets:AR", Amount: refundRes.Total.Negate()},    // -660 (Reduce Debt)
+        {AccountID: "Rev:Sales", Amount: refundRes.Components[0].Amount}, // +600 (Reduce Rev)
+        {AccountID: "Liab:Tax",  Amount: refundRes.Components[1].Amount}, // +60  (Reduce Liab)
+    })
+    
+    // Result: Books are balanced. Net Tax Liability matches Net Sales.
+}
+
+```
+
 ## ⚡ Benchmarks
 
 Core algorithms are optimized for high-frequency trading or billing systems.
@@ -206,7 +189,7 @@ BenchmarkCalculateProratedCharges/1_Year-16      3000 ns/op    0 allocs/op
 
 ```
 
-*Note: The Business Day counter uses O(1) math logic with a fallback safety loop, ensuring performance remains constant regardless of the time window size.*
+*Note: The Business Day counter uses O(1) math logic with a fallback safety loop, ensuring performance remains constant regardless of the time window size. All keys are integer-based to ensure zero GC pressure.*
 
 ## 🧪 Verification
 
@@ -234,4 +217,3 @@ PRs are welcome. Please ensure that:
 ## 📄 License
 
 MIT
-
