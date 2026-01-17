@@ -11,6 +11,7 @@
 * **📅 O(1) Business Calendar:** Calculate billable days between dates excluding weekends and holidays in constant time (no loops), verified against brute-force logic.
 * **📉 Tiered Pricing:** Calculate costs for volume pricing (e.g., "First 10k units @ $0.05, Next 50k @ $0.04") with micro-penny precision.
 * **🏛️ Tax Engine:** Handle Inclusive (VAT) and Exclusive (Sales Tax) calculations without rounding drift.
+* **egotiated Refunds:**wo-level refund engine that handles quantity returns limits and prorates negotiated settlements (e.g., "Keep item for 30% discount") while preserving tax/base ratios.
 * **🧪 Property-Based Tested:** Logic verified with thousands of random inputs via `gopter` to prove invariants hold (e.g., Conservation of Money).
 
 ## 🚀 Installation
